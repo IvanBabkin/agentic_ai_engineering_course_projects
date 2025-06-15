@@ -129,17 +129,21 @@ def prepare_download(query, report_content):
     clean_content = report_content.replace("--- \n", "", 1) if report_content.startswith("--- \n") else report_content
     filename = generate_download_filename(query)
     
-    # Create a temporary file and return its path
+    # HF Spaces compatible file creation
     import tempfile
-    import os
-    
-    temp_dir = tempfile.gettempdir()
-    file_path = os.path.join(temp_dir, filename)
     
     try:
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(clean_content)
-        return gr.update(visible=True), file_path
+        # Use NamedTemporaryFile - this works reliably on HF Spaces
+        temp_file = tempfile.NamedTemporaryFile(
+            mode='w', 
+            suffix='.md', 
+            delete=False,  # Keep file for download
+            encoding='utf-8'
+        )
+        temp_file.write(clean_content)
+        temp_file.close()
+        
+        return gr.update(visible=True), temp_file.name
     except Exception as e:
         print(f"Error creating download file: {e}")
         return gr.update(visible=False), None
