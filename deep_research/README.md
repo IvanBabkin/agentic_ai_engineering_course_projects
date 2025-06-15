@@ -4,18 +4,6 @@ app_file: deep_research.py
 sdk: gradio
 sdk_version: 5.31.0
 ---
-﻿---
-title: Deep Research Light v1.1
-emoji: 🔬
-colorFrom: blue
-colorTo: green
-sdk: gradio
-sdk_version: 5.31.0
-app_file: deep_research.py
-pinned: false
-license: mit
-python_version: 3.10
----
 
 # Deep Research Tool
 
