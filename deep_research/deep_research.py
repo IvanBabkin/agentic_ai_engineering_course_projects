@@ -2,13 +2,14 @@ import gradio as gr
 from dotenv import load_dotenv
 from research_manager import ResearchManager
 import json
+from datetime import datetime
 
 load_dotenv(override=True)
 
 # Global constants for search limits
 MIN_SEARCHES = 1
 MAX_SEARCHES = 5
-DEFAULT_SEARCHES = 3
+DEFAULT_SEARCHES = 1
 
 def validate_n_searches(n_searches_input):
     """Validate and normalize the number of searches input"""
@@ -111,6 +112,38 @@ def create_clarification_interface(questions, assessment=None):
     
     return interface_html
 
+def generate_download_filename(query: str) -> str:
+    """Generate a clean filename for the download"""
+    # Clean the query for filename (remove special characters)
+    safe_query = "".join(c for c in query if c.isalnum() or c in (' ', '-', '_')).rstrip()
+    safe_query = safe_query[:50]  # Limit length
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return f"research_report_{safe_query}_{timestamp}.md"
+
+def prepare_download(query, report_content):
+    """Prepare download file content and filename"""
+    if not report_content or not report_content.strip():
+        return gr.update(visible=False), None
+    
+    # Remove the "--- \n" prefix if present
+    clean_content = report_content.replace("--- \n", "", 1) if report_content.startswith("--- \n") else report_content
+    filename = generate_download_filename(query)
+    
+    # Create a temporary file and return its path
+    import tempfile
+    import os
+    
+    temp_dir = tempfile.gettempdir()
+    file_path = os.path.join(temp_dir, filename)
+    
+    try:
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(clean_content)
+        return gr.update(visible=True), file_path
+    except Exception as e:
+        print(f"Error creating download file: {e}")
+        return gr.update(visible=False), None
+
 def handle_research_output(status_output, report_output, history_output):
     """Handle research output and check for clarification needs"""
     # Check history_output instead of report_output for clarification signals
@@ -140,7 +173,7 @@ def handle_research_output(status_output, report_output, history_output):
         assessment_json = json.dumps(assessment) if assessment else ""
         
         # Return proper history without the CLARIFICATION_NEEDED signal
-        clean_history = status_output  # Use status as the clean history
+        clean_history = status_output
         
         return (
             clean_history,  # status shows clean progress
@@ -151,9 +184,13 @@ def handle_research_output(status_output, report_output, history_output):
             True,  # clarification needed flag
             gr.update(visible=True, value="", lines=max(2, len(questions))),  # show answer textbox with appropriate height
             trace_id,  # store trace_id
-            assessment_json  # store assessment info
+            assessment_json,  # store assessment info
+            gr.update(visible=False)  # hide download section during clarification
         )
     else:
+        # Check if we have a final report
+        has_report = report_output and report_output.strip() and not report_output.startswith("CLARIFICATION_NEEDED:")
+        
         return (
             status_output,
             report_output,
@@ -163,7 +200,8 @@ def handle_research_output(status_output, report_output, history_output):
             False,  # no clarification needed
             gr.update(visible=False, value=""),  # hide answer textbox
             "",  # clear trace_id
-            ""  # clear assessment info
+            "",  # clear assessment info
+            gr.update(visible=has_report)  # show/hide download section based on report availability
         )
 
 async def handle_clarification_submit(query, n_searches_input, stored_questions_json, answers_text, clarification_needed, trace_id, assessment_json):
@@ -280,6 +318,14 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="sky")) as ui:
     # Final report
     report = gr.Markdown(value="", label="Research Report")
     
+    # Download section (initially hidden)
+    with gr.Row(visible=False) as download_section:
+        download_button = gr.DownloadButton(
+            label="📥 Download Report as Markdown",
+            variant="secondary",
+            size="lg"
+        )
+    
     # Clarification interface (initially hidden)
     with gr.Column(visible=False) as clarification_section:
         clarification_display = gr.Markdown()
@@ -301,8 +347,8 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="sky")) as ui:
     history = gr.State("")
     stored_questions = gr.State("")
     clarification_needed = gr.State(False)
-    current_trace_id = gr.State("")  # Store trace_id across interactions
-    stored_assessment = gr.State("")  # Store assessment info across interactions
+    current_trace_id = gr.State("")
+    stored_assessment = gr.State("")
     
     # Main research button
     research_output = run_button.click(
@@ -317,7 +363,14 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="sky")) as ui:
     research_output.then(
         fn=handle_research_output,
         inputs=[status, report, history],
-        outputs=[status, clarification_display, history, clarification_section, stored_questions, clarification_needed, clarification_answers, current_trace_id, stored_assessment]
+        outputs=[status, clarification_display, history, clarification_section, stored_questions, clarification_needed, clarification_answers, current_trace_id, stored_assessment, download_section]
+    )
+    
+    # Update download button when report changes
+    report.change(
+        fn=prepare_download,
+        inputs=[query_textbox, report],
+        outputs=[download_section, download_button]
     )
     
     # Handle clarification submission
@@ -326,6 +379,10 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="sky")) as ui:
         inputs=[query_textbox, n_searches_textbox, stored_questions, clarification_answers, clarification_needed, current_trace_id, stored_assessment],
         outputs=[status, report, history, clarification_section, stored_questions, clarification_needed, clarification_answers, current_trace_id, stored_assessment],
         queue=True
+    ).then(
+        fn=handle_research_output,
+        inputs=[status, report, history],
+        outputs=[status, clarification_display, history, clarification_section, stored_questions, clarification_needed, clarification_answers, current_trace_id, stored_assessment, download_section]
     )
     
     # Handle skip clarification
@@ -334,6 +391,10 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="sky")) as ui:
         inputs=[query_textbox, n_searches_textbox, current_trace_id, stored_questions, stored_assessment],
         outputs=[status, report, history, clarification_section, stored_questions, clarification_needed, clarification_answers, current_trace_id, stored_assessment],
         queue=True
+    ).then(
+        fn=handle_research_output,
+        inputs=[status, report, history],
+        outputs=[status, clarification_display, history, clarification_section, stored_questions, clarification_needed, clarification_answers, current_trace_id, stored_assessment, download_section]
     )
     
     # Allow enter key submission
@@ -345,7 +406,7 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="sky")) as ui:
     ).then(
         fn=handle_research_output,
         inputs=[status, report, history],
-        outputs=[status, clarification_display, history, clarification_section, stored_questions, clarification_needed, clarification_answers, current_trace_id]
+        outputs=[status, clarification_display, history, clarification_section, stored_questions, clarification_needed, clarification_answers, current_trace_id, stored_assessment, download_section]
     )
 
     # Show validation when user changes the number of searches
@@ -359,4 +420,8 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="sky")) as ui:
     )
 
 if __name__ == "__main__":
-    ui.launch(inbrowser=True)
+    ui.launch(
+        inbrowser=True,
+        quiet=True,
+        show_api=False
+    )
