@@ -42,30 +42,15 @@ class ResearchManager:
         with trace("Deep Research Session", trace_id=trace_id):
             # Clarification step - Only run if clarification_answers is None (first attempt)
             if clarification_answers is None:
-                # yield "**DEBUG:** Entering clarification step..."
                 yield "## Analyzing query complexity..."
                 
                 try:
-                    # yield f"**DEBUG:** About to call clarification agent with query: '{query}'"
-                    
                     result = await Runner.run(
                         clarification_agent,
                         f"Query: {query}",
                     )
                     
-                    # yield f"**DEBUG:** Clarification agent completed successfully"
-                    
                     clarification_plan = result.final_output_as(ClarificationPlan)
-                    
-                    # yield f"**DEBUG:** Complexity: {clarification_plan.assessment.complexity}"
-                    # yield f"**DEBUG:** Should ask questions: {clarification_plan.should_ask_questions}"
-                    # yield f"**DEBUG:** Number of questions: {len(clarification_plan.questions)}"
-                    # yield f"**DEBUG:** Reasoning: {clarification_plan.assessment.reasoning}"
-                    
-                    # Print the actual questions
-                    # for i, q in enumerate(clarification_plan.questions):
-                    #     yield f"**DEBUG:** Question {i+1}: {q.question}"
-                    #     yield f"**DEBUG:** Purpose {i+1}: {q.purpose}"
                     
                     # Check if we should ask questions
                     if clarification_plan.should_ask_questions:
@@ -73,21 +58,14 @@ class ResearchManager:
                         self._clarification_reasoning = clarification_plan.assessment.reasoning
                         self._clarification_complexity = clarification_plan.assessment.complexity
                         
-                        # yield f"**DEBUG:** About to yield CLARIFICATION_NEEDED with data"
                         clarification_json = clarification_plan.model_dump_json()
-                        # yield f"**DEBUG:** JSON data: {clarification_json}"
                         # Include trace_id in the clarification data
                         yield f"CLARIFICATION_NEEDED:{clarification_json}|TRACE_ID:{trace_id}"
-                        # yield f"**DEBUG:** Returned after yielding CLARIFICATION_NEEDED"
                         return
                     else:
-                        # yield "**DEBUG:** No clarification needed, proceeding with search..."
                         pass
                         
                 except Exception as e:
-                    # yield f"**ERROR:** Exception in clarification step: {str(e)}"
-                    # import traceback
-                    # yield f"**ERROR:** Full traceback: {traceback.format_exc()}"
                     # Continue without clarification if there's an error
                     pass
             else:
@@ -118,45 +96,10 @@ class ResearchManager:
             if clarification_answers == "SKIP":
                 clarification_answers = None  # Reset to None for enhanced query building
             
-            # DEBUG: Context analysis before planning
-            # yield f"**DEBUG CONTEXT:** Original query: '{query}'"
-            # yield f"**DEBUG CONTEXT:** Clarification answers after processing: {clarification_answers}"
-            # yield f"**DEBUG CONTEXT:** Has clarification context: {clarification_answers is not None and len(clarification_answers) > 0 if clarification_answers else False}"
-            
-            # if clarification_answers:
-            #     yield f"**DEBUG CONTEXT:** Number of clarification Q&As: {len(clarification_answers)}"
-            #     for i, (question, answer) in enumerate(clarification_answers.items(), 1):
-            #         yield f"**DEBUG CONTEXT:** Q{i}: {question[:50]}..."
-            #         yield f"**DEBUG CONTEXT:** A{i}: {answer}"
-            #         if answer == "Answer skipped":
-            #             yield f"**DEBUG CONTEXT:** ↳ This question was skipped by user"
-            #         else:
-            #             yield f"**DEBUG CONTEXT:** ↳ This provides specific user context"
-            
-            # DEBUG: Enhanced query building
-            # yield f"**DEBUG ENHANCE:** Building enhanced query..."
-            # yield f"**DEBUG ENHANCE:** Original query: '{query}'"
-            
-            # if not clarification_answers:
-            #     yield f"**DEBUG ENHANCE:** No clarification answers - returning basic query"
-            # else:
-            #     yield f"**DEBUG ENHANCE:** Processing {len(clarification_answers)} clarification answers"
-            #     for question, answer in clarification_answers.items():
-            #         yield f"**DEBUG ENHANCE:** Added Q&A pair - Answer type: {'Skipped' if answer == 'Answer skipped' else 'Provided'}"
-            
             enhanced_query = self.build_enhanced_query(query, clarification_answers)
-            
-            # yield f"**DEBUG ENHANCE:** Enhanced query total length: {len(enhanced_query)} characters"
-            # if clarification_answers:
-            #     yield f"**DEBUG ENHANCE:** Enhancement includes {'skipped and answered' if any(a != 'Answer skipped' for a in clarification_answers.values()) and any(a == 'Answer skipped' for a in clarification_answers.values()) else 'all answered' if all(a != 'Answer skipped' for a in clarification_answers.values()) else 'all skipped'} questions"
-            
-            # yield f"**DEBUG PLANNING:** Enhanced query length: {len(enhanced_query)} characters"
-            # yield f"**DEBUG PLANNING:** Enhanced query preview: {enhanced_query[:200]}..."
             
             # Plan searches (now with enhanced context)
             yield "## Generating search plan..."
-            # yield f"**DEBUG PLANNING:** About to call planner with enhanced context"
-            # yield f"**DEBUG PLANNING:** Context enhancement factor: {'High' if clarification_answers and len(clarification_answers) > 2 else 'Medium' if clarification_answers else 'None'}"
             
             planner_agent = generate_planner_agent(n_searches)
             result = await Runner.run(
@@ -165,11 +108,19 @@ class ResearchManager:
             )
             search_plan = result.final_output_as(WebSearchPlan)
             
-            # Ensure we don't exceed the validated number of searches
-            if len(search_plan.searches) > n_searches:
-                search_plan.searches = search_plan.searches[:n_searches]
+            # Display deviation reasoning if provided
+            if search_plan.deviation_reasoning:
+                if len(search_plan.searches) != n_searches:
+                    yield f"**Search count adjusted:** {len(search_plan.searches)} searches (you requested {n_searches}) \n"
+                    yield f"**Reasoning:** {search_plan.deviation_reasoning} \n"
+                else:
+                    yield f"**Note:** {search_plan.deviation_reasoning} \n"
             
-            yield f"Will perform **{len(search_plan.searches)}** searches (validated: {n_searches} requested) \n"
+            # Ensure we don't exceed the validated number of searches (this is now mostly redundant due to Pydantic constraints)
+            if len(search_plan.searches) > MAX_SEARCHES:
+                search_plan.searches = search_plan.searches[:MAX_SEARCHES]
+            
+            yield f"Will perform **{len(search_plan.searches)}** searches \n"
             for search in search_plan.searches:
                 yield f"Query: **{search.query}** \t"
                 yield f"Reason: {search.reason} \n"
@@ -203,12 +154,12 @@ class ResearchManager:
         """ Perform a search for the query """
         input = f"Search term: {item.query}\nReason for searching: {item.reason}"
         try:
-            # result = await Runner.run(
-            #     search_agent,
-            #     input,
-            # )
-            # return str(result.final_output)
-            return "test"
+            result = await Runner.run(
+                search_agent,
+                input,
+            )
+            return str(result.final_output)
+        # return "test"
         except Exception:
             return None
 

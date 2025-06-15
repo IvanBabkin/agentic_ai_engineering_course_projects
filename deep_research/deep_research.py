@@ -265,9 +265,8 @@ with gr.Blocks(theme=gr.themes.Default(primary_hue="sky")) as ui:
         )
         n_searches_textbox = gr.Textbox(
             label=f"Number of searches", 
-            placeholder=f"Enter number of searches (default: {DEFAULT_SEARCHES})",
+            placeholder=f"Enter number of searches (between {MIN_SEARCHES} and {MAX_SEARCHES})",
             scale=1,
-            value=str(DEFAULT_SEARCHES)
         )
     
     # Search validation feedback
