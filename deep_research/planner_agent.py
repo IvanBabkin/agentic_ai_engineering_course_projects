@@ -3,9 +3,17 @@ from agents import Agent
 
 def generate_planner_agent_instructions(n_searches: int):
     INSTRUCTIONS = f"""
-        You are an expert research strategist. Given a query, create a comprehensive search plan with {n_searches} diverse and strategic web searches.
+        You are an expert research strategist. Given a query (possibly with additional clarification context), create a comprehensive search plan with {n_searches} diverse and strategic web searches.
+
+        When additional context is provided from clarification questions, use that information to:
+        - Focus searches on the specific aspects the user is most interested in
+        - Adjust the scope and depth based on their preferences
+        - Target the appropriate audience level (technical vs. general)
+        - Consider the specified time frame or geographical focus
+        - Include the requested perspectives or viewpoints
 
         For each search, consider:
+        - **Relevance to clarified intent**: Prioritize aspects highlighted in clarification
         - **Coverage**: Ensure searches cover different aspects/angles of the topic
         - **Specificity**: Balance broad overview searches with specific detailed searches  
         - **Recency**: Include searches for recent developments or current information

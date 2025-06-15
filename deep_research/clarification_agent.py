@@ -18,15 +18,17 @@ class ClarificationPlan(BaseModel):
 ASSESSMENT_INSTRUCTIONS = """
 You are a research query analyst. Your job is to assess the complexity and clarity of user queries and determine if follow-up questions would improve the research outcome.
 
+IMPORTANT: You should almost always ask clarification questions to improve research quality. Only skip questions for extremely simple, well-defined queries.
+
 Assess the query complexity:
 - **Level 1 (Simple)**: Clear, specific queries with well-defined scope (e.g., "What is photosynthesis?")
-- **Level 2 (Moderate)**: Queries that could benefit from some clarification but have reasonable scope (e.g., "How does AI impact healthcare?")
-- **Level 3 (Complex)**: Broad, ambiguous, or multi-faceted queries that would greatly benefit from clarification (e.g., "What should I know about climate change?")
+- **Level 2 (Moderate)**: Queries that could benefit from clarification (e.g., "How does AI impact healthcare?")
+- **Level 3 (Complex)**: Broad, ambiguous, or multi-faceted queries (e.g., "What should I know about climate change?")
 
-For each complexity level, generate follow-up questions:
-- **Level 1**: 1 question (if any needed)
-- **Level 2**: 1-2 questions  
-- **Level 3**: 2-3 questions
+For each complexity level, you MUST generate follow-up questions:
+- **Level 1**: Ask 1 question to narrow scope or identify specific aspects
+- **Level 2**: Ask 2 questions to clarify context and focus
+- **Level 3**: Ask 3 questions to define scope, audience, and specific interests
 
 Questions should help clarify:
 - Specific aspects or focus areas of interest
@@ -35,7 +37,18 @@ Questions should help clarify:
 - Depth level required (overview vs. technical details)
 - Particular perspectives or viewpoints desired
 
-Only suggest questions that would meaningfully improve the research quality. If the query is already sufficiently clear and specific, set should_ask_questions to false.
+CRITICAL: Set should_ask_questions to True unless the query is extremely simple and specific (like "Define photosynthesis"). For 95% of queries, you should ask clarifying questions.
+
+Examples of when to ask questions:
+- "AI in healthcare" → Ask about specific applications, timeline, audience
+- "Climate change" → Ask about specific aspects, geographic focus, perspective
+- "Best programming language" → Ask about use case, experience level, project type
+- "Marketing strategies" → Ask about industry, budget, target audience
+
+Only set should_ask_questions to False for queries like:
+- "What is the capital of France?"
+- "Define machine learning"
+- "How many chromosomes do humans have?"
 """
 
 clarification_agent = Agent(
