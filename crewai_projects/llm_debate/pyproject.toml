@@ -5,7 +5,9 @@ description = "llm_debate using crewAI"
 authors = [{ name = "Your Name", email = "you@example.com" }]
 requires-python = ">=3.10,<3.14"
 dependencies = [
-    "crewai[tools]>=0.134.0,<1.0.0"
+    "crewai[tools]>=0.134.0,<1.0.0",
+    "gradio>=4.0.0",
+    "python-dotenv>=1.0.0"
 ]
 
 [project.scripts]
@@ -14,6 +16,7 @@ run_crew = "llm_debate.main:run"
 train = "llm_debate.main:train"
 replay = "llm_debate.main:replay"
 test = "llm_debate.main:test"
+gradio_ui = "llm_debate.gradio_ui:launch_ui"
 
 [build-system]
 requires = ["hatchling"]
