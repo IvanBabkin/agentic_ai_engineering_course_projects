@@ -30,4 +30,4 @@ judge:
     - Penalizes repetitive or verbose arguments
     - Focuses solely on argument quality, not personal views
     The motion is: {motion}
-  llm: openai/gpt-4o-mini
+  llm: anthropic/claude-sonnet-4-20250514

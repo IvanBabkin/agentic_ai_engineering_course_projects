@@ -1,7 +1,7 @@
 from crewai import Agent, Crew, Process, Task
 from crewai.project import CrewBase, agent, crew, task
-import os
 from dotenv import load_dotenv
+from functools import cached_property
 
 load_dotenv()
 
@@ -11,10 +11,10 @@ class Debate():
 
     agents_config = 'config/agents.yaml'
     tasks_config = 'config/tasks.yaml'
-
-    @agent
-    def debater(self) -> Agent:
-        """Debater agent that can argue either side"""
+    
+    @cached_property
+    def _debater_instance(self) -> Agent:
+        """Cached debater agent instance"""
         return Agent(
             config=self.agents_config['debater'],
             verbose=True,
@@ -23,10 +23,10 @@ class Debate():
             allow_delegation=False,
             streaming=True
         )
-
-    @agent
-    def judge(self) -> Agent:
-        """Judge agent that decides the winner"""
+    
+    @cached_property  
+    def _judge_instance(self) -> Agent:
+        """Cached judge agent instance"""
         return Agent(
             config=self.agents_config['judge'],
             verbose=True,
@@ -36,23 +36,35 @@ class Debate():
             streaming=True
         )
 
+    @agent
+    def debater(self) -> Agent:
+        return self._debater_instance
+
+    @agent
+    def judge(self) -> Agent:
+        return self._judge_instance
+
     def create_debate_argument_task(self, argument_num: int, position: str, context_tasks=None):
         """Create a debate argument task dynamically from YAML template"""
         
-        # Set context instruction based on whether there's a preceding argument
-        if not context_tasks:
-            context_instruction = "Present your opening argument."
-        else:
-            context_instruction = "Respond to your opponent's most recent argument and then present your own points."
+        context_instruction = (
+            "Present your opening argument." if not context_tasks else
+            "Respond to your opponent's most recent argument and then present your own points."
+        )
         
-        # Create description by substituting only our custom placeholders
-        # Leave {motion} for CrewAI to resolve from inputs
+        # Use f-strings for better performance
         base_description = self.tasks_config['debate_argument']['description']
-        description = base_description.replace('{argument_num}', str(argument_num)).replace('{position}', position).replace('{context_instruction}', context_instruction)
+        description = base_description.format(
+            argument_num=argument_num,
+            position=position, 
+            context_instruction=context_instruction,
+            motion='{motion}'  # Leave for CrewAI
+        )
         
-        # Create expected output
-        base_expected_output = self.tasks_config['debate_argument']['expected_output']
-        expected_output = base_expected_output.replace('{argument_num}', str(argument_num)).replace('{position}', position)
+        expected_output = self.tasks_config['debate_argument']['expected_output'].format(
+            argument_num=argument_num,
+            position=position
+        )
         
         return Task(
             description=description,
