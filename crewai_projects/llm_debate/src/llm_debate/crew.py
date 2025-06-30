@@ -18,8 +18,10 @@ class Debate():
         return Agent(
             config=self.agents_config['debater'],
             verbose=True,
-            memory=True,
-            max_execution_time=120
+            memory=False,
+            max_execution_time=30,
+            allow_delegation=False,
+            streaming=True
         )
 
     @agent
@@ -28,17 +30,20 @@ class Debate():
         return Agent(
             config=self.agents_config['judge'],
             verbose=True,
-            memory=True
+            memory=False,
+            max_execution_time=45,
+            allow_delegation=False,
+            streaming=True
         )
 
     def create_debate_round_task(self, round_num: int, position: str, context_tasks=None):
         """Create a debate round task dynamically from YAML template"""
         
-        # Set context instruction based on round
-        if round_num == 1:
+        # Set context instruction based on whether there's a preceding argument
+        if not context_tasks:
             context_instruction = "Present your opening argument."
         else:
-            context_instruction = "Build upon previous arguments and respond to your opponent's points from earlier rounds."
+            context_instruction = "Respond to your opponent's most recent argument and then present your own points."
         
         # Create description by substituting only our custom placeholders
         # Leave {motion} for CrewAI to resolve from inputs
@@ -53,7 +58,6 @@ class Debate():
             description=description,
             expected_output=expected_output,
             agent=self.debater(),
-            output_file=f"output/{position}_round_{round_num}.md",
             context=context_tasks or []
         )
 
@@ -67,43 +71,43 @@ class Debate():
 
     @crew
     def crew(self) -> Crew:
-        """Creates debate crew with dynamically generated round tasks"""
+        """Creates a debate crew with sequential execution of debate rounds."""
         
-        tasks = []
+        # Round 1
+        for_task_r1 = self.create_debate_round_task(round_num=1, position="FOR")
+        against_task_r1 = self.create_debate_round_task(
+            round_num=1, position="AGAINST", context_tasks=[for_task_r1]
+        )
         
-        # Create 3 rounds of debate dynamically
-        for round_num in range(1, 4):
-            # Determine context for this round (previous tasks)
-            context_tasks = tasks.copy() if round_num > 1 else []
-            
-            # FOR debater's turn
-            for_task = self.create_debate_round_task(
-                round_num=round_num, 
-                position="FOR", 
-                context_tasks=context_tasks
-            )
-            tasks.append(for_task)
-            
-            # AGAINST debater's turn
-            against_task = self.create_debate_round_task(
-                round_num=round_num, 
-                position="AGAINST", 
-                context_tasks=tasks.copy()  # Include the FOR task just added
-            )
-            tasks.append(against_task)
+        # Round 2
+        for_task_r2 = self.create_debate_round_task(
+            round_num=2, position="FOR", context_tasks=[against_task_r1]
+        )
+        against_task_r2 = self.create_debate_round_task(
+            round_num=2, position="AGAINST", context_tasks=[for_task_r2]
+        )
         
-        # Add judge decision with context of all debate rounds
+        # Round 3
+        for_task_r3 = self.create_debate_round_task(
+            round_num=3, position="FOR", context_tasks=[against_task_r2]
+        )
+        against_task_r3 = self.create_debate_round_task(
+            round_num=3, position="AGAINST", context_tasks=[for_task_r3]
+        )
+        
+        # Judge's decision (depends on all debate rounds)
         judge_task = self.judge_decision()
-        judge_task.context = tasks.copy()  # All debate rounds as context
-        tasks.append(judge_task)
-        
-        # Get unique agents
-        agents = [self.debater(), self.judge()]
+        all_debate_tasks = [
+            for_task_r1, against_task_r1,
+            for_task_r2, against_task_r2,
+            for_task_r3, against_task_r3,
+        ]
+        judge_task.context = all_debate_tasks
         
         return Crew(
-            agents=agents,
-            tasks=tasks,
+            agents=[self.debater(), self.judge()],
+            tasks=all_debate_tasks + [judge_task],
             process=Process.sequential,
             verbose=True,
-            memory=True
+            memory=False,
         )
