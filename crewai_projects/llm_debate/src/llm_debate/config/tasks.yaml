@@ -13,14 +13,37 @@ oppose:
     You are in opposition to the motion: {motion}.
     Come up with a clear argument against the motion.
     Be very convincing.
+    
+    Consider the arguments made by the proposing side and address them in your counterargument.
   expected_output: >
     Your clear argument against the motion, in a concise manner.
   agent: debater
   output_file: output/oppose.md
+
 decide:
   description: >
     Review the arguments presented by the debaters and decide which side is more convincing.
+    
+    Consider both the proposing and opposing arguments carefully.
   expected_output: >
     Your decision on which side is more convincing, and why.
+  agent: judge
+  output_file: output/decide.md
+
+debate_round:
+  description: >
+    Round {round_num}: You are arguing {position} the motion: {motion}.
+    {context_instruction}
+    Be very convincing and build upon previous arguments if any.
+  expected_output: >
+    Your compelling argument {position} the motion in round {round_num}.
+  agent: debater
+
+judge_decision:
+  description: >
+    Review all arguments from both sides across all rounds and decide which side is more convincing.
+    Consider the strength of arguments, rebuttals, and overall debate performance.
+  expected_output: >
+    Your final decision on which side won the debate with detailed reasoning.
   agent: judge
   output_file: output/decide.md

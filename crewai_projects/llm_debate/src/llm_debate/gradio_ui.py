@@ -295,103 +295,69 @@ def capture_logs():
         sys.stdout = old_stdout
 
 def stream_debate(motion):
-    """Stream the debate results as each task completes"""
+    """Stream the debate results using dynamic task workflow"""
     if not motion.strip():
         yield [], "Please enter a motion for the debate.", "**Status:** Waiting for topic", "", ""
         return
     
     try:
-        # Clear previous API logs
         api_logger.clear()
-        
-        # Initialize debate crew
         debate_crew = Debate()
         output_dir = Path("output")
-        
-        # Ensure output directory exists
         output_dir.mkdir(exist_ok=True)
         
-        # Clear previous output files
-        for file in ["propose.md", "oppose.md", "decide.md"]:
-            file_path = output_dir / file
-            if file_path.exists():
-                file_path.unlink()
+        # Clear previous outputs
+        for file in output_dir.glob("*.md"):
+            file.unlink()
         
         chat_messages = []
         inputs = {'motion': motion}
         all_logs = ""
         
-        # Start API call capture
         with capture_api_calls():
-            # Run propose task
-            yield chat_messages, "*Debate starting...*", "**Status:** 🔄 FOR debater is preparing argument...", all_logs, api_logger.get_formatted_logs()
+            yield chat_messages, "*Debate starting...*", "**Status:** 🔄 Multi-round debate beginning...", all_logs, api_logger.get_formatted_logs()
             
+            # Create and run the debate crew
             with capture_logs() as logs:
-                propose_crew = Crew(
-                    agents=[debate_crew.debater()],
-                    tasks=[debate_crew.propose()],
-                    process=Process.sequential,
-                    verbose=True
-                )
-                propose_crew.kickoff(inputs=inputs)
-            all_logs += clean_ansi(logs.getvalue()) + "\n\n"
+                crew = debate_crew.crew()
+                result = crew.kickoff(inputs=inputs)
             
-            # Read and display complete FOR argument
-            propose_file = output_dir / "propose.md"
-            if propose_file.exists():
-                with open(propose_file, 'r', encoding='utf-8') as f:
-                    propose_content = f.read()
-                
-                chat_messages.append({"role": "assistant", "content": f"**Debater FOR**: {propose_content}"})
-                yield chat_messages, "*AGAINST debater is preparing response...*", "**Status:** ✅ FOR debater completed - AGAINST debater preparing...", all_logs, api_logger.get_formatted_logs()
-            
-            # Run oppose task
-            yield chat_messages, "*AGAINST debater is preparing response...*", "**Status:** 🔄 AGAINST debater is preparing argument...", all_logs, api_logger.get_formatted_logs()
-            
-            with capture_logs() as logs:
-                oppose_crew = Crew(
-                    agents=[debate_crew.debater()],
-                    tasks=[debate_crew.oppose()],
-                    process=Process.sequential,
-                    verbose=True
-                )
-                oppose_crew.kickoff(inputs=inputs)
-            all_logs += clean_ansi(logs.getvalue()) + "\n\n"
-            
-            # Read and display complete AGAINST argument
-            oppose_file = output_dir / "oppose.md"
-            if oppose_file.exists():
-                with open(oppose_file, 'r', encoding='utf-8') as f:
-                    oppose_content = f.read()
-                
-                chat_messages.append({"role": "user", "content": f"**Debater AGAINST**: {oppose_content}"})
-                yield chat_messages, "*Judge is deliberating...*", "**Status:** ✅ Both debaters completed - Judge deliberating...", all_logs, api_logger.get_formatted_logs()
-            
-            # Run decide task
-            yield chat_messages, "*Judge is deliberating...*", "**Status:** ⚖️ Judge is making decision...", all_logs, api_logger.get_formatted_logs()
-            
-            with capture_logs() as logs:
-                decide_crew = Crew(
-                    agents=[debate_crew.judge()],
-                    tasks=[debate_crew.decide()],
-                    process=Process.sequential,
-                    verbose=True
-                )
-                decide_crew.kickoff(inputs=inputs)
             all_logs += clean_ansi(logs.getvalue())
             
-            # Read and display judge decision
+            # Process debate rounds dynamically
+            for round_num in range(1, 4):
+                # FOR argument
+                for_file = output_dir / f"FOR_round_{round_num}.md"
+                if for_file.exists():
+                    with open(for_file, 'r', encoding='utf-8') as f:
+                        for_content = f.read()
+                    chat_messages.append({"role": "assistant", "content": f"**Round {round_num} - FOR**: {for_content}"})
+                    yield chat_messages, f"*Round {round_num} continuing...*", f"**Status:** ✅ Round {round_num} FOR complete", all_logs, api_logger.get_formatted_logs()
+                
+                # AGAINST argument
+                against_file = output_dir / f"AGAINST_round_{round_num}.md"
+                if against_file.exists():
+                    with open(against_file, 'r', encoding='utf-8') as f:
+                        against_content = f.read()
+                    chat_messages.append({"role": "user", "content": f"**Round {round_num} - AGAINST**: {against_content}"})
+                    
+                    if round_num < 3:
+                        yield chat_messages, f"*Round {round_num + 1} starting...*", f"**Status:** ✅ Round {round_num} complete", all_logs, api_logger.get_formatted_logs()
+                    else:
+                        yield chat_messages, "*Judge deliberating...*", "**Status:** ✅ All rounds complete", all_logs, api_logger.get_formatted_logs()
+            
+            # Display judge decision
             decide_file = output_dir / "decide.md"
-            judge_decision = "No decision available"
             if decide_file.exists():
                 with open(decide_file, 'r', encoding='utf-8') as f:
                     judge_decision = f.read()
-            
-            final_judge = f"## ⚖️ Final Verdict\n\n{judge_decision}"
-            yield chat_messages, final_judge, "**Status:** ✅ Debate complete!", all_logs, api_logger.get_formatted_logs()
+                final_judge = f"## ⚖️ Final Verdict\n\n{judge_decision}"
+                yield chat_messages, final_judge, "**Status:** ✅ Debate complete!", all_logs, api_logger.get_formatted_logs()
+            else:
+                yield chat_messages, "**Error:** No judge decision available", "**Status:** ❌ Error reading decision", all_logs, api_logger.get_formatted_logs()
         
     except Exception as e:
-        yield [], f"**Error:** {str(e)}", "**Status:** ❌ Error", "", ""
+        yield [], f"**Error:** {str(e)}", "**Status:** ❌ Error", all_logs, api_logger.get_formatted_logs()
 
 def create_interface():
     """Create the debate interface"""
@@ -411,7 +377,7 @@ def create_interface():
             topic_input = gr.Textbox(
                 label="🎯 Debate Topic",
                 placeholder="What should the AIs debate about?",
-                value="Cats are better pets than dogs",
+                value="Dachshunds are the best dog breed",
                 scale=3
             )
             start_btn = gr.Button("🚀 Start Debate", variant="primary", scale=1)
