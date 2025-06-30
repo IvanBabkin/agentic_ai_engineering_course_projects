@@ -36,8 +36,8 @@ class Debate():
             streaming=True
         )
 
-    def create_debate_round_task(self, round_num: int, position: str, context_tasks=None):
-        """Create a debate round task dynamically from YAML template"""
+    def create_debate_argument_task(self, argument_num: int, position: str, context_tasks=None):
+        """Create a debate argument task dynamically from YAML template"""
         
         # Set context instruction based on whether there's a preceding argument
         if not context_tasks:
@@ -47,12 +47,12 @@ class Debate():
         
         # Create description by substituting only our custom placeholders
         # Leave {motion} for CrewAI to resolve from inputs
-        base_description = self.tasks_config['debate_round']['description']
-        description = base_description.replace('{round_num}', str(round_num)).replace('{position}', position).replace('{context_instruction}', context_instruction)
+        base_description = self.tasks_config['debate_argument']['description']
+        description = base_description.replace('{argument_num}', str(argument_num)).replace('{position}', position).replace('{context_instruction}', context_instruction)
         
         # Create expected output
-        base_expected_output = self.tasks_config['debate_round']['expected_output']
-        expected_output = base_expected_output.replace('{round_num}', str(round_num)).replace('{position}', position)
+        base_expected_output = self.tasks_config['debate_argument']['expected_output']
+        expected_output = base_expected_output.replace('{argument_num}', str(argument_num)).replace('{position}', position)
         
         return Task(
             description=description,
@@ -71,42 +71,38 @@ class Debate():
 
     @crew
     def crew(self) -> Crew:
-        """Creates a debate crew with sequential execution of debate rounds."""
+        """Creates a debate crew with sequential execution of debate arguments."""
         
-        # Round 1
-        for_task_r1 = self.create_debate_round_task(round_num=1, position="FOR")
-        against_task_r1 = self.create_debate_round_task(
-            round_num=1, position="AGAINST", context_tasks=[for_task_r1]
-        )
-        
-        # Round 2
-        for_task_r2 = self.create_debate_round_task(
-            round_num=2, position="FOR", context_tasks=[against_task_r1]
-        )
-        against_task_r2 = self.create_debate_round_task(
-            round_num=2, position="AGAINST", context_tasks=[for_task_r2]
-        )
-        
-        # Round 3
-        for_task_r3 = self.create_debate_round_task(
-            round_num=3, position="FOR", context_tasks=[against_task_r2]
-        )
-        against_task_r3 = self.create_debate_round_task(
-            round_num=3, position="AGAINST", context_tasks=[for_task_r3]
-        )
+        num_arguments = 3
+        tasks = []
+        last_task = None
+
+        for i in range(1, num_arguments + 1):
+            # FOR argument
+            for_task = self.create_debate_argument_task(
+                argument_num=i, 
+                position="FOR", 
+                context_tasks=[last_task] if last_task else []
+            )
+            tasks.append(for_task)
+            last_task = for_task
+
+            # AGAINST argument
+            against_task = self.create_debate_argument_task(
+                argument_num=i, 
+                position="AGAINST", 
+                context_tasks=[last_task]
+            )
+            tasks.append(against_task)
+            last_task = against_task
         
         # Judge's decision (depends on all debate rounds)
         judge_task = self.judge_decision()
-        all_debate_tasks = [
-            for_task_r1, against_task_r1,
-            for_task_r2, against_task_r2,
-            for_task_r3, against_task_r3,
-        ]
-        judge_task.context = all_debate_tasks
+        judge_task.context = tasks
         
         return Crew(
             agents=[self.debater(), self.judge()],
-            tasks=all_debate_tasks + [judge_task],
+            tasks=tasks + [judge_task],
             process=Process.sequential,
             verbose=True,
             memory=False,

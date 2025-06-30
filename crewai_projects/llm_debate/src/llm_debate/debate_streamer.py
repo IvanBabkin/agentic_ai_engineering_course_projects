@@ -51,65 +51,36 @@ class DebateStreamer:
         judge = crew.judge()
         
         tasks = []
-        
-        # Round 1
-        tasks.append({
-            'agent': debater,
-            'description': f"Round 1: You are arguing FOR the motion: {motion}. Present your opening argument.",
-            'position': 'FOR',
-            'round': 1,
-            'context': None
-        })
-        
-        tasks.append({
-            'agent': debater,
-            'description': f"Round 1: You are arguing AGAINST the motion: {motion}. Respond to your opponent's most recent argument and then present your own points.",
-            'position': 'AGAINST', 
-            'round': 1,
-            'context': 'for_r1'
-        })
-        
-        # Round 2
-        tasks.append({
-            'agent': debater,
-            'description': f"Round 2: You are arguing FOR the motion: {motion}. Respond to your opponent's most recent argument and then present your own points.",
-            'position': 'FOR',
-            'round': 2,
-            'context': 'against_r1'
-        })
-        
-        tasks.append({
-            'agent': debater,
-            'description': f"Round 2: You are arguing AGAINST the motion: {motion}. Respond to your opponent's most recent argument and then present your own points.",
-            'position': 'AGAINST',
-            'round': 2,
-            'context': 'for_r2'
-        })
-        
-        # Round 3
-        tasks.append({
-            'agent': debater,
-            'description': f"Round 3: You are arguing FOR the motion: {motion}. Respond to your opponent's most recent argument and then present your own points.",
-            'position': 'FOR',
-            'round': 3,
-            'context': 'against_r2'
-        })
-        
-        tasks.append({
-            'agent': debater,
-            'description': f"Round 3: You are arguing AGAINST the motion: {motion}. Respond to your opponent's most recent argument and then present your own points.",
-            'position': 'AGAINST',
-            'round': 3,
-            'context': 'for_r3'
-        })
-        
+        num_arguments = 3
+
+        # Arguments
+        for i in range(1, num_arguments + 1):
+            # FOR argument
+            tasks.append({
+                'agent': debater,
+                'description': f"Argument {i}: You are arguing FOR the motion: '{motion}'. " + 
+                               ("Present your opening argument." if i == 1 else "Respond to your opponent's most recent argument and then present your own points."),
+                'position': 'FOR',
+                'argument': i,
+                'context': f"against_a{i-1}" if i > 1 else None
+            })
+            
+            # AGAINST argument
+            tasks.append({
+                'agent': debater,
+                'description': f"Argument {i}: You are arguing AGAINST the motion: '{motion}'. Respond to your opponent's most recent argument and then present your own points.",
+                'position': 'AGAINST',
+                'argument': i,
+                'context': f"for_a{i}"
+            })
+
         # Judge decision
         tasks.append({
             'agent': judge,
-            'description': f"Review all arguments from both sides across all rounds and decide which side is more convincing for the motion: {motion}. Consider the strength of arguments, rebuttals, and overall debate performance.",
+            'description': f"Review all arguments from both sides across all {num_arguments} arguments and decide which side is more convincing for the motion: {motion}. Consider the strength of arguments, rebuttals, and overall debate performance.",
             'position': 'JUDGE',
-            'round': 'FINAL',
-            'context': 'all_rounds'
+            'argument': 'FINAL',
+            'context': 'all_arguments'
         })
         
         return tasks
@@ -118,12 +89,12 @@ class DebateStreamer:
         """Execute a single task and stream its result"""
         # Send status update
         position = task_info['position']
-        round_num = task_info['round']
+        argument_num = task_info['argument']
         
         if position == 'JUDGE':
             status = "Judge is deliberating..."
         else:
-            status = f"Round {round_num}: {position} is responding..."
+            status = f"Argument {argument_num}: {position} is responding..."
         
         self.update_queue.put(('status', status))
         
@@ -136,7 +107,7 @@ class DebateStreamer:
         # Create and execute task
         task = Task(
             description=full_description,
-            expected_output=f"Your compelling argument {position.lower()} the motion in round {round_num}." if position != 'JUDGE' else "Your final decision on which side won the debate with detailed reasoning.",
+            expected_output=f"Your compelling argument {position.lower()} the motion in argument {argument_num}." if position != 'JUDGE' else "Your final decision on which side won the debate with detailed reasoning.",
             agent=task_info['agent']
         )
         
@@ -164,7 +135,7 @@ class DebateStreamer:
         # Stream the result
         self.update_queue.put(('result', {
             'position': position,
-            'round': round_num,
+            'argument': argument_num,
             'content': result,
             'timestamp': datetime.now()
         }))
@@ -174,12 +145,15 @@ class DebateStreamer:
         if not context_key or not hasattr(self, 'results'):
             return ""
         
-        if context_key == 'all_rounds':
+        if context_key == 'all_arguments':
             # For judge, include all previous arguments
             context_parts = []
-            for key, result in self.results.items():
-                if key != 'judge':
-                    context_parts.append(f"{key.upper()}: {result}")
+            # Ensure consistent order for the judge
+            for i in range(1, 4): # Assuming 3 arguments
+                if f'for_a{i}' in self.results:
+                    context_parts.append(f"FOR (Argument {i}): {self.results[f'for_a{i}']}")
+                if f'against_a{i}' in self.results:
+                    context_parts.append(f"AGAINST (Argument {i}): {self.results[f'against_a{i}']}")
             return "\n\n".join(context_parts)
         elif context_key in self.results:
             return self.results[context_key]
@@ -192,12 +166,12 @@ class DebateStreamer:
             self.results = {}
         
         position = task_info['position'].lower()
-        round_num = task_info['round']
+        argument_num = task_info['argument']
         
         if position == 'judge':
             key = 'judge'
         else:
-            key = f"{position}_r{round_num}"
+            key = f"{position}_a{argument_num}"
         
         self.results[key] = result
     

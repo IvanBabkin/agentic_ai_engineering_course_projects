@@ -1,10 +1,10 @@
-debate_round:
+debate_argument:
   description: >
-    Round {round_num}: You are arguing {position} the motion: {motion}.
+    Argument {argument_num}: You are arguing {position} the motion: {motion}.
     {context_instruction}
     Be very convincing and build upon previous arguments if any.
   expected_output: >
-    Your compelling argument {position} the motion in round {round_num}.
+    Your compelling argument {position} the motion in argument {argument_num}.
   agent: debater
 
 judge_decision:

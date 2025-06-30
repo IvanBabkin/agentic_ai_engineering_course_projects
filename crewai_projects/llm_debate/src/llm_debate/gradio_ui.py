@@ -52,13 +52,13 @@ def stream_debate(motion):
                 elif update_type == 'result':
                     # Format and add to transcript
                     position = data['position']
-                    round_num = data['round']
+                    argument_num = data['argument']
                     content = data['content']
                     
                     if position == 'JUDGE':
                         judge_decision = content
                     else:
-                        heading = f"### Round {round_num}: {'Proponent' if position == 'FOR' else 'Opponent'} of '{motion}'"
+                        heading = f"## Argument {argument_num}: {'🟢 Proponent' if position == 'FOR' else '🔴 Opponent'} of '_{motion}_'"
                         debate_transcript += f"\n\n---\n\n{heading}\n\n{content}"
                 
                 elif update_type == 'complete':
