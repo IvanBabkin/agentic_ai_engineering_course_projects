@@ -3,21 +3,27 @@ from crewai_tools import SerperDevTool
 from typing import Type
 from pydantic import BaseModel, Field
 
+
 class SearchToolInput(BaseModel):
-    query: str = Field(..., description="The search query")
+    """Schema for the web-search tool."""
+    query: str = Field(..., description="Search query")
+
 
 class OneTimeSearchTool(BaseTool):
-    name: str = "web_search"
-    description: str = "Search the web for information. Can only be used ONCE per task."
+    """
+    Web-search tool that can be used once per task execution.
+    """
+    name: str = "web_search_once"
+    description: str = "Search the web. Can only be invoked once per task."
     args_schema: Type[BaseModel] = SearchToolInput
-    
-    # Define as proper Pydantic fields
-    serper_tool: SerperDevTool = Field(default_factory=SerperDevTool, exclude=True)
-    used: bool = Field(default=False, exclude=True)
-    
-    def _run(self, query: str) -> str:
-        if self.used:
-            return "Search already used in this task. Please proceed with available information."
-        
-        self.used = True
-        return self.serper_tool.run(query)
+
+    def _run(self, query: str, **_ignored) -> str:
+        """Perform the web search."""
+        serper_tool = SerperDevTool(
+            n_results=5
+        )
+        result = serper_tool.run(
+            search_query=query)
+        return f"""{result} 
+            \n\nweb search tool was now called for this task, 
+            no further web searches available for this task"""

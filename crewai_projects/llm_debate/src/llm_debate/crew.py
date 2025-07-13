@@ -37,12 +37,12 @@ class Debate():
         """Creates the 'FOR' position debater"""
         return Agent(
             config=self._create_debater_config("FOR"),
+            tools=[OneTimeSearchTool()],
             verbose=True,
             memory=False,
             max_execution_time=30,
             allow_delegation=False,
-            streaming=True,
-            tools=[OneTimeSearchTool()]
+            streaming=True
         )
     
     @agent
@@ -50,12 +50,12 @@ class Debate():
         """Creates the 'AGAINST' position debater"""
         return Agent(
             config=self._create_debater_config("AGAINST"),
+            tools=[OneTimeSearchTool()],
             verbose=True,
             memory=False,
             max_execution_time=30,
             allow_delegation=False,
-            streaming=True,
-            tools=[OneTimeSearchTool()]
+            streaming=True
         )
 
     @agent
@@ -99,13 +99,8 @@ class Debate():
             position=position
         )
         
-        # Select the appropriate agent and reset its tools
+        # Select the appropriate agent
         agent = self.debater_for() if position == "FOR" else self.debater_against()
-        
-        # Reset the search tool for this task
-        for tool in agent.tools:
-            if hasattr(tool, 'used'):
-                tool.used = False
         
         return Task(
             description=description,
@@ -137,7 +132,7 @@ class Debate():
         4. Process continues for specified number of rounds
         5. Judge evaluates and decides
         """
-        
+
         num_arguments = 3  # Number of argument rounds per side
         tasks = []
         last_task = None
