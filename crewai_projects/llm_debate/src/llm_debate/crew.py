@@ -133,7 +133,7 @@ class Debate():
         5. Judge evaluates and decides
         """
 
-        num_arguments = 3  # Number of argument rounds per side
+        num_arguments = 2  # Number of argument rounds per side
         tasks = []
         last_task = None
 
