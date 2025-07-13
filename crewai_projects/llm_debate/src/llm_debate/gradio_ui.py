@@ -1,102 +1,117 @@
 import gradio as gr
 import time
 import threading
-import queue
 from datetime import datetime
 from .debate_streamer import DebateStreamer
 
 
-def run_debate_in_background(streamer, motion, result_queue):
-    """Run debate in background thread"""
-    try:
-        streamer.execute_debate(motion)
-        result_queue.put(('success', 'Debate completed'))
-    except Exception as e:
-        result_queue.put(('error', str(e)))
-
-
-def stream_debate(motion):
-    """Stream debate execution with real-time updates"""
-    
-    # Initialize state
-    debate_transcript = ""
-    judge_decision = "*The judge will render their decision after the debate concludes.*"
-    status = "**Status:** Starting debate..."
-    
-    # Create streamer and result queue
-    streamer = DebateStreamer()
-    result_queue = queue.Queue()
+def stream_debate_execution(motion):
+    """Stream debate execution using the original DebateStreamer approach"""
+    if not motion.strip():
+        yield "❌ Please enter a debate topic", "❌ Error: No topic provided", "", ""
+        return
     
     try:
-        # Initial yield
-        yield debate_transcript, judge_decision, status, "", ""
+        # Use the original DebateStreamer
+        streamer = DebateStreamer()
         
-        # Start debate in background thread
-        debate_thread = threading.Thread(
-            target=run_debate_in_background,
-            args=(streamer, motion, result_queue)
-        )
+        # Container for completion status
+        execution_complete = {'done': False}
+        
+        def run_debate():
+            """Run the debate in a separate thread"""
+            try:
+                streamer.execute_debate(motion)
+                execution_complete['done'] = True
+            except Exception as e:
+                streamer.update_queue.put(('error', str(e)))
+                execution_complete['done'] = True
+        
+        # Start debate execution in background thread
+        debate_thread = threading.Thread(target=run_debate, daemon=True)
         debate_thread.start()
         
-        # Monitor for updates
-        last_update = time.time()
+        # Stream updates as they come in
+        debate_content = ""
+        current_status = "🔄 Starting debate..."
         
-        while debate_thread.is_alive() or not result_queue.empty():
-            # Process streamer updates
+        while not execution_complete['done'] or not streamer.update_queue.empty():
+            # Get all pending updates
             updates = streamer.get_updates()
             
-            for update_type, data in updates:
+            for update_type, update_data in updates:
                 if update_type == 'status':
-                    status = f"**Status:** {data}"
+                    current_status = f"🔄 {update_data}"
                     
                 elif update_type == 'result':
-                    # Format and add to transcript
-                    position = data['position']
-                    argument_num = data['argument']
-                    content = data['content']
+                    # Format the debate result
+                    position = update_data['position']
+                    argument = update_data['argument']
+                    content = update_data['content']
+                    timestamp = update_data['timestamp'].strftime("%H:%M:%S")
                     
                     if position == 'JUDGE':
-                        judge_decision = content
+                        header = f"\n\n## 🏛️ **JUDGE DECISION** ({timestamp})\n\n"
                     else:
-                        heading = f"## Argument {argument_num}: {'🟢 Proponent' if position == 'FOR' else '🔴 Opponent'} of '_{motion}_'"
-                        debate_transcript += f"\n\n---\n\n{heading}\n\n{content}"
-                
+                        header = f"\n\n## 🎯 **{position} - Argument {argument}** ({timestamp})\n\n"
+                    
+                    debate_content += header + content + "\n"
+                    
                 elif update_type == 'complete':
-                    status = "**Status:** ✅ Debate completed successfully!"
+                    current_status = "✅ Debate complete!"
                     
                 elif update_type == 'error':
-                    status = f"**Status:** ❌ Error: {data}"
+                    current_status = f"❌ Error: {update_data}"
+                    debate_content += f"\n\n❌ **Error:** {update_data}"
             
-            # Check for thread completion
-            if not debate_thread.is_alive():
-                try:
-                    result_type, message = result_queue.get_nowait()
-                    if result_type == 'error':
-                        status = f"**Status:** ❌ Error: {message}"
-                    elif status.startswith("**Status:** ❌") == False:  # Don't override error status
-                        status = "**Status:** ✅ Debate completed successfully!"
-                except queue.Empty:
-                    pass
+            # Get current logs
+            try:
+                execution_logs = streamer.get_logs()
+                api_logs = streamer.get_api_logs()
+            except Exception as e:
+                execution_logs = f"Error getting logs: {e}"
+                api_logs = f"Error getting API logs: {e}"
             
-            # Periodic UI updates (throttled)
-            if time.time() - last_update > 0.2:
-                yield debate_transcript, judge_decision, status, streamer.get_logs(), streamer.get_api_logs()
-                last_update = time.time()
+            # Yield current state
+            yield (
+                debate_content or "*Debate starting...*",
+                current_status,
+                execution_logs or "No execution logs yet...",
+                api_logs or "No API calls logged yet..."
+            )
             
-            time.sleep(0.1)
+            time.sleep(0.1)  # Quick polling for responsiveness
         
         # Wait for thread to complete
-        debate_thread.join()
+        debate_thread.join(timeout=10)
         
+        # Final update with all logs
+        try:
+            final_execution_logs = streamer.get_logs()
+            final_api_logs = streamer.get_api_logs()
+        except Exception as e:
+            final_execution_logs = f"Error getting final logs: {e}"
+            final_api_logs = f"Error getting final API logs: {e}"
+        
+        yield (
+            debate_content,
+            current_status,
+            final_execution_logs or "No execution logs captured.",
+            final_api_logs or "No API calls logged."
+        )
+            
     except Exception as e:
-        status = f"**Status:** ❌ Unexpected error: {str(e)}"
-    
-    # Final yield with both log types
-    yield debate_transcript, judge_decision, status, streamer.get_logs(), streamer.get_api_logs()
+        error_msg = str(e)
+        yield (
+            f"❌ Error starting debate: {error_msg}",
+            f"❌ Error: {error_msg}",
+            f"Error: {error_msg}",
+            f"Error: {error_msg}"
+        )
 
 
 def create_interface():
-    """Create the debate interface"""
+    """Create the debate interface with proper log displays"""
     
     with gr.Blocks(title="AI Debate Arena", theme=gr.themes.Soft()) as demo:
         
@@ -104,7 +119,7 @@ def create_interface():
         gr.HTML("""
         <div style='text-align: center; padding: 20px;'>
             <h1>🎭 AI Debate Arena</h1>
-            <p>Two AI agents debate any topic you choose!</p>
+            <p>Watch AI agents debate any topic with real-time streaming!</p>
         </div>
         """)
         
@@ -112,58 +127,53 @@ def create_interface():
         with gr.Row():
             topic_input = gr.Textbox(
                 label="🎯 Debate Topic",
-                placeholder="What should the AIs debate about?",
+                placeholder="Enter a topic for debate (e.g., 'Remote work is more productive than office work')",
                 value="Dachshunds are the best dog breed",
                 scale=3
             )
             start_btn = gr.Button("🚀 Start Debate", variant="primary", scale=1)
         
-        # Chat area
-        gr.Markdown("## 💬 Live Debate")
-        
+        # Main debate display
         debate_display = gr.Markdown(
-            value="*The debate will appear here as it unfolds...*",
-            elem_id="debate_display"
-        )
-        
-        # Judge section
-        gr.Markdown("## ⚖️ Judge's Verdict")
-        judge_display = gr.Markdown(
-            value="*The judge will render their decision after the debate concludes.*",
-            show_label=False
+            value="*Enter a topic above and click 'Start Debate' to begin...*",
+            label="💬 Live Debate",
+            height=400
         )
         
         # Status indicator
-        status = gr.Markdown("**Status:** Ready to debate", visible=True)
+        status = gr.Markdown("**Status:** Ready to debate")
         
-        # CrewAI logs (collapsible)
-        with gr.Accordion("CrewAI Execution Logs", open=False):
-            logs_display = gr.Textbox(
-                value="Logs will appear here...",
-                lines=20,
-                max_lines=20,
-                interactive=False,
-                show_label=False
-            )
+        # Log displays (restored from original)
+        with gr.Row():
+            # Execution logs
+            with gr.Column(scale=1):
+                logs_display = gr.Textbox(
+                    value="Execution logs will appear here...",
+                    label="📝 Execution Logs",
+                    lines=15,
+                    interactive=False,
+                    max_lines=20
+                )
+            
+            # API logs
+            with gr.Column(scale=1):
+                api_logs_display = gr.Markdown(
+                    value="API calls will appear here...",
+                    label="📡 API Call Logs",
+                    height=400
+                )
         
-        # API Call logs (collapsible)
-        with gr.Accordion("API Call Logs", open=False):
-            api_logs_display = gr.Markdown(
-                value="API calls will appear here...",
-                show_label=False
-            )
-        
-        # Connect the interface
+        # Event handlers
         start_btn.click(
-            fn=stream_debate,
+            fn=stream_debate_execution,
             inputs=[topic_input],
-            outputs=[debate_display, judge_display, status, logs_display, api_logs_display]
+            outputs=[debate_display, status, logs_display, api_logs_display]
         )
         
         topic_input.submit(
-            fn=stream_debate,
+            fn=stream_debate_execution,
             inputs=[topic_input],
-            outputs=[debate_display, judge_display, status, logs_display, api_logs_display]
+            outputs=[debate_display, status, logs_display, api_logs_display]
         )
     
     return demo

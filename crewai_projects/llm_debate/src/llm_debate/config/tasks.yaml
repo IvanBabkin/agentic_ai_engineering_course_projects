@@ -5,7 +5,7 @@ debate_argument:
     Be very convincing and build upon previous arguments if any.
   expected_output: >
     Your compelling argument {position} the motion in argument {argument_num}.
-  agent: debater
+
 
 judge_decision:
   description: >
@@ -14,4 +14,3 @@ judge_decision:
   expected_output: >
     Your final decision on which side won the debate with detailed reasoning.
   agent: judge
-  output_file: output/decide.md
