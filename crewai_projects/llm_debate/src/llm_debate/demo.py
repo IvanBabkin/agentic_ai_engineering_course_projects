@@ -15,7 +15,7 @@ def run():
     Run the crew.
     """
     inputs = {
-        'motion': 'Inception is the best movie of all time',
+        'motion': 'Inception is the best movie of all time as of July 2025',
     }
     
     try:

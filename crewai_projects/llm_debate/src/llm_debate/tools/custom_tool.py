@@ -1,19 +1,23 @@
 from crewai.tools import BaseTool
+from crewai_tools import SerperDevTool
 from typing import Type
 from pydantic import BaseModel, Field
 
+class SearchToolInput(BaseModel):
+    query: str = Field(..., description="The search query")
 
-class MyCustomToolInput(BaseModel):
-    """Input schema for MyCustomTool."""
-    argument: str = Field(..., description="Description of the argument.")
-
-class MyCustomTool(BaseTool):
-    name: str = "Name of my tool"
-    description: str = (
-        "Clear description for what this tool is useful for, your agent will need this information to use it."
-    )
-    args_schema: Type[BaseModel] = MyCustomToolInput
-
-    def _run(self, argument: str) -> str:
-        # Implementation goes here
-        return "this is an example of a tool output, ignore it and move along."
+class OneTimeSearchTool(BaseTool):
+    name: str = "web_search"
+    description: str = "Search the web for information. Can only be used ONCE per task."
+    args_schema: Type[BaseModel] = SearchToolInput
+    
+    # Define as proper Pydantic fields
+    serper_tool: SerperDevTool = Field(default_factory=SerperDevTool, exclude=True)
+    used: bool = Field(default=False, exclude=True)
+    
+    def _run(self, query: str) -> str:
+        if self.used:
+            return "Search already used in this task. Please proceed with available information."
+        
+        self.used = True
+        return self.serper_tool.run(query)

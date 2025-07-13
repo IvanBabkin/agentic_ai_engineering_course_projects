@@ -13,4 +13,3 @@ judge_decision:
     Consider the strength of arguments, rebuttals, and overall debate performance.
   expected_output: >
     Your final decision on which side won the debate with detailed reasoning.
-  agent: judge

@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 import copy
 import yaml
 from pathlib import Path
+from .tools.custom_tool import OneTimeSearchTool
 
 load_dotenv()
 
@@ -15,7 +16,7 @@ class Debate():
         """Initialize and load YAML configurations"""
         super().__init__()
         
-        # Get config directory - clean and simple
+        # Get config directory
         config_dir = Path(__file__).parent / 'config'
         
         # Load YAML configurations
@@ -26,52 +27,35 @@ class Debate():
             self.tasks_config = yaml.safe_load(file)
 
     def _create_debater_config(self, position: str) -> dict:
-        """
-        Create debater configuration with position-specific formatting
-        
-        This method demonstrates how one configuration can serve multiple agents.
-        We take the base 'debater' template and customize it for specific positions.
-        """
-        # Now we can safely access the loaded YAML data
+        """Create debater configuration with position-specific formatting"""
         base_config = copy.deepcopy(self.agents_config['debater'])
-        
-        # Convert position to natural language for the goal formatting
-        position_text = "for" if position == "FOR" else "against"
-        
-        # Replace the placeholder with the actual position
-        # The {for/against} in your YAML becomes either "for" or "against"
-        base_config['goal'] = base_config['goal'].replace('{for/against}', position_text)
-        
+        base_config['goal'] = base_config['goal'].replace('{for/against}', position)
         return base_config
 
     @agent
     def debater_for(self) -> Agent:
-        """
-        Creates the 'FOR' position debater
-        Uses the shared debater configuration with FOR-specific customization
-        """
+        """Creates the 'FOR' position debater"""
         return Agent(
             config=self._create_debater_config("FOR"),
             verbose=True,
-            memory=False,  # Fresh start for each debate
+            memory=False,
             max_execution_time=30,
-            allow_delegation=False,  # Keep debates focused
-            streaming=True
+            allow_delegation=False,
+            streaming=True,
+            tools=[OneTimeSearchTool()]
         )
     
     @agent
     def debater_against(self) -> Agent:
-        """
-        Creates the 'AGAINST' position debater
-        Uses the same base configuration as debater_for, just with different position
-        """
+        """Creates the 'AGAINST' position debater"""
         return Agent(
             config=self._create_debater_config("AGAINST"),
             verbose=True,
-            memory=False,  # Fresh start for each debate
+            memory=False,
             max_execution_time=30,
-            allow_delegation=False,  # Keep debates focused
-            streaming=True
+            allow_delegation=False,
+            streaming=True,
+            tools=[OneTimeSearchTool()]
         )
 
     @agent
@@ -81,7 +65,7 @@ class Debate():
         Uses its own dedicated configuration
         """
         return Agent(
-            config=self.agents_config['judge'],  # Now properly accessing loaded data
+            config=self.agents_config['judge'],
             verbose=True,
             memory=False,
             max_execution_time=45,  # Judges need more time to deliberate
@@ -90,12 +74,7 @@ class Debate():
         )
 
     def create_debate_argument_task(self, argument_num: int, position: str, context_tasks=None):
-        """
-        Create a debate argument task dynamically from YAML template
-        
-        This shows how tasks can also be generated from templates,
-        similar to how we're sharing agent configurations
-        """
+        """Create a debate argument task dynamically from YAML template"""
         
         # Determine context instruction based on whether this is an opening or response
         context_instruction = (
@@ -120,15 +99,19 @@ class Debate():
             position=position
         )
         
-        # Select the appropriate agent based on position
-        # This is where our shared configuration pays off - both agents have the same capabilities
+        # Select the appropriate agent and reset its tools
         agent = self.debater_for() if position == "FOR" else self.debater_against()
+        
+        # Reset the search tool for this task
+        for tool in agent.tools:
+            if hasattr(tool, 'used'):
+                tool.used = False
         
         return Task(
             description=description,
             expected_output=expected_output,
             agent=agent,
-            context=context_tasks or []  # Build conversation chain
+            context=context_tasks or []
         )
 
     @task
@@ -138,7 +121,7 @@ class Debate():
         The judge evaluates all arguments and makes a final decision
         """
         return Task(
-            config=self.tasks_config['judge_decision'],  # Now accessing loaded data
+            config=self.tasks_config['judge_decision'],
             agent=self.judge()
         )
 
@@ -188,5 +171,5 @@ class Debate():
             tasks=tasks + [judge_task],
             process=Process.sequential,  # One task at a time, in order
             verbose=True,
-            memory=False,  # Each debate is independent
+            memory=False
         )
