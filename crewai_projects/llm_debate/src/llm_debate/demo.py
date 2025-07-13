@@ -5,6 +5,7 @@ from pathlib import Path
 from datetime import datetime
 
 from llm_debate.crew import Debate
+from llm_debate.logging.log_capture import LogCapture
 
 load_dotenv()
 warnings.filterwarnings("ignore", category=SyntaxWarning, module="pysbd")
@@ -66,9 +67,21 @@ def run():
         'motion': 'Inception is the best movie of all time as of July 2025.',
     }
     
+    # Create log capture instance
+    log_capture = LogCapture()
+    
     try:
+        # Start capturing logs
+        log_capture.start()
+        
         # Execute the crew
         result = Debate().crew().kickoff(inputs=inputs)
+        
+        # Stop capturing logs
+        log_capture.stop()
+        
+        # Get captured logs
+        captured_logs = log_capture.get_logs()
         
         # Format the complete debate results
         formatted_results = format_debate_results(result, inputs['motion'])
@@ -76,9 +89,14 @@ def run():
         # Save to output directory
         Path("output").mkdir(exist_ok=True)
         Path("output/debate_result.md").write_text(formatted_results, encoding='utf-8')
+        Path("output/debate_logs.txt").write_text(captured_logs, encoding='utf-8')
+        
         print("Complete debate results saved to output/debate_result.md")
+        print("Terminal logs saved to output/debate_logs.txt")
         
     except Exception as e:
+        # Stop capturing logs even on error
+        log_capture.stop()
         raise Exception(f"An error occurred while running the crew: {e}")
 
 if __name__ == "__main__":
