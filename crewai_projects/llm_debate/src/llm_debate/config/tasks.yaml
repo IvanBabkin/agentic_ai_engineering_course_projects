@@ -1,0 +1,15 @@
+debate_argument:
+  description: >
+    Argument {argument_num}: You are arguing {position} the motion: {motion}.
+    {context_instruction}
+    Be very convincing and build upon previous arguments if any.
+  expected_output: >
+    Your compelling argument {position} the motion in argument {argument_num}.
+
+
+judge_decision:
+  description: >
+    Review all arguments from both sides across all rounds and decide which side is more convincing.
+    Consider the strength of arguments, rebuttals, and overall debate performance.
+  expected_output: >
+    Your final decision on which side won the debate with detailed reasoning.
