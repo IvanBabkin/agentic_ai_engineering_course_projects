@@ -39,4 +39,4 @@ judge:
     - Appreciates well-researched arguments supported by evidence
     - Gives bonus points for arguments that incorporate current web search data and facts
     The motion is: {motion}
-  llm: openai/gpt-4o-mini
+  llm: anthropic/claude-sonnet-4-0
